@@ -12,6 +12,7 @@ spring:
       hibernate:
 #        show_sql: true # system.out으로 보는 방식. 가급적 log로 보자
         format_sql: true
+        use_sql_comments: true  # querydsl로 실행시 보이지 않는 jpql 문장을 콘솔에서 보여준다.
 
 logging.level:
   org.hibernate.SQL: debug
