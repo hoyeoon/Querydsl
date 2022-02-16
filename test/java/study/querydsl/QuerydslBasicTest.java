@@ -39,7 +39,7 @@ import static study.querydsl.entity.QMember.*;
 import static study.querydsl.entity.QTeam.*;
 
 @SpringBootTest
-@Transactional
+@Transactional	// 기본적으로 rollback 한다. 다음 테스트에서 정상적으로 동작하도록
 public class QuerydslBasicTest {
 
 	@Autowired
@@ -702,5 +702,72 @@ public class QuerydslBasicTest {
 	// 조합이 가능하다 (`null` 체크는 주의해서 처리해야 함)
 	private BooleanExpression allEq(String usernameCond, Integer ageCond) {
 		return usernameEq(usernameCond).and(ageEq(ageCond));
+	}
+
+	/** 벌크 연산
+	 *
+	 * 벌크 연산은 영속성 컨텍스트를 무시하고, DB에 바로 쿼리를 넣는다.
+	 * 따라서 두 상태가 다르게 되는 문제가 생긴다.
+	 */
+	@Test
+//	@Commit	// @Transactional 기본설정이 rollback 이여서 잠시 DB 확인을 위해 @Commit 사용
+	public void bulkUpdate() {
+
+		// 실행 전
+		// member1 = 10 -> DB member1
+		// member2 = 20 -> DB member2
+		// member3 = 30 -> DB member3
+		// member4 = 40 -> DB member4
+
+		long count = queryFactory // count에는 영향을 받은 row 수가 나간다.
+				.update(member)
+				.set(member.username, "비회원")
+				.where(member.age.lt(28))
+				.execute();
+
+		// 실행 후
+		// member1 = 10 -> DB 비회원
+		// member2 = 20 -> DB 비회원
+		// member3 = 30 -> DB member3
+		// member4 = 40 -> DB member4
+
+		// 벌크연산 -> em.flush(); em.clear(); 필수
+		em.flush();
+		em.clear();
+
+		List<Member> result = queryFactory
+				.selectFrom(member)
+				.fetch();
+
+		// em.flush(); em.clear(); 하지 않으면 DB와 다른 영속성 컨텍스트의 값을 가져온다.(repeatable read)
+		// 따라서, 벌크 연산 이후 영속성 컨텍스트와 DB의 동기화를 위해서는
+		// 항상 em.flush(); em.clear();를 날려주자.
+		for (Member member1 : result) {
+			System.out.println("member1 = " + member1);
+		}
+	}
+
+	@Test
+	public void bulkAdd() {
+		long count = queryFactory
+				.update(member)
+				.set(member.age, member.age.add(1))
+				.execute();
+	}
+
+	@Test
+	public void bulkMuliply() {
+		long count = queryFactory
+				.update(member)
+				.set(member.age, member.age.multiply(2))
+				.execute();
+	}
+
+	@Test
+	public void bulkDelete() {
+		long count = queryFactory
+				.delete(member)
+				.where(member.age.gt(18))
+				.execute();
 	}
 }
