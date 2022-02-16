@@ -2,6 +2,8 @@ package study.querydsl;
 
 import com.querydsl.core.QueryResults;
 import com.querydsl.core.Tuple;
+import com.querydsl.core.types.ExpressionUtils;
+import com.querydsl.core.types.Projections;
 import com.querydsl.core.types.dsl.CaseBuilder;
 import com.querydsl.core.types.dsl.Expressions;
 import com.querydsl.jpa.JPAExpressions;
@@ -15,6 +17,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.Commit;
 import org.springframework.test.annotation.Rollback;
 import org.springframework.transaction.annotation.Transactional;
+import study.querydsl.dto.MemberDto;
+import study.querydsl.dto.QMemberDto;
+import study.querydsl.dto.UserDto;
 import study.querydsl.entity.Member;
 import study.querydsl.entity.QMember;
 import study.querydsl.entity.QTeam;
@@ -491,6 +496,146 @@ public class QuerydslBasicTest {
 
 		for (String s : result) {
 			System.out.println("s = " + s);
+		}
+	}
+
+	@Test
+	public void simpleProjection() {
+		List<String> result = queryFactory
+				.select(member.username)
+				.from(member)
+				.fetch();
+
+		for (String s : result) {
+			System.out.println("s = " + s);
+		}
+	}
+
+	@Test
+	public void tupleProjection() {
+		/**
+		 * com.querydsl.core 패키지 내에 존재하는 Tuple은 repository 계층 내에서 쓰도록 하자.
+		 * 바깥으로 던질 때는 DTO로 반환해야 한다!! Tuple도 querydsl에 종속적인 타입이기 때문
+		 * 좋은 설계는 하부 기술을 바꾸더라도(ex. querydsl을 다른 걸로 변경) Controller, Service 가 바뀌지 않아야 한다.
+		 */
+		List<Tuple> result = queryFactory
+				.select(member.username, member.age)
+				.from(member)
+				.fetch();
+
+		for (Tuple tuple : result) {
+			String username = tuple.get(member.username);
+			int age = tuple.get(member.age);
+			System.out.println("username = " + username);
+			System.out.println("age = " + age);
+		}
+	}
+
+	@Test
+	public void findDtoByJPQL() {
+		/**
+		 * 순수 JPA에서 DTO를 조회할 때는 new 명령어를 사용해야 함
+		 * DTO의 패키지 이름을 다 적어줘야 해서 지저분함
+		 * 생성자 방식만 지원함(Setter, 필드에 값을 바로 주입이 불가능)
+		 * */
+		List<MemberDto> result = em.createQuery("select new study.querydsl.dto.MemberDto(m.username, m.age)" +
+				" from Member m", MemberDto.class)
+				.getResultList();
+
+		for (MemberDto memberDto : result) {
+			System.out.println("memberDto = " + memberDto);
+		}
+	}
+
+	// Setter를 통해 값이 들어가는 방식
+	@Test
+	public void findBySetter() {
+		List<MemberDto> result = queryFactory
+				.select(Projections.bean(MemberDto.class,
+						member.username,
+						member.age))
+				.from(member)
+				.fetch();
+
+		for (MemberDto memberDto : result) {
+			System.out.println("memberDto = " + memberDto);
+		}
+	}
+
+	// Getter, Setter 무시하고 값이 필드에 꽂힌다.
+	@Test
+	public void findByField() {
+		List<MemberDto> result = queryFactory
+				.select(Projections.fields(MemberDto.class,
+						member.username,
+						member.age))
+				.from(member)
+				.fetch();
+
+		for (MemberDto memberDto : result) {
+			System.out.println("memberDto = " + memberDto);
+		}
+	}
+
+	// 생성자 방식 - 생성자는 타입으로 들어가기 때문에 MemberDto -> UserDto로 바뀌어도 이상없다.
+	@Test
+	public void findByConstructor() {
+		List<UserDto> result = queryFactory
+				.select(Projections.constructor(UserDto.class,
+						member.username,
+						member.age))
+				.from(member)
+				.fetch();
+
+		for (UserDto userDto : result) {
+			System.out.println("userDto = " + userDto);
+		}
+	}
+
+	// Getter, Setter 무시하고 값이 필드에 꽂힌다.
+	@Test
+	public void findUserDto() {
+		QMember memberSub = new QMember("memberSub");
+
+		List<UserDto> result = queryFactory
+				.select(Projections.fields(UserDto.class,
+						member.username.as("name"),	// as 없이 member.username 의 경우 field 명이 달라 null 값이 채워진다.
+						member.age,
+						// as 하는 또 다른 방법
+						ExpressionUtils.as(JPAExpressions
+							.select(memberSub.age.max())
+							.from(memberSub), "age")
+				))
+				.from(member)
+				.fetch();
+
+		for (UserDto userDto : result) {
+			System.out.println("userDto = " + userDto);
+		}
+	}
+
+	// MemberDto에 @QueryProjection 붙인 후 compileQuerydsl 실행하여 QMemberDto 만들고 진행
+	/**
+	 * 단점 - 실무에서 잘 사용하지 않는 이유
+	 *
+	 * 1. compileQuerydsl 과정이 귀찮다
+	 * 2. Dto에 @QueryProjection를 붙이므로 querydsl에 대한 의존성이 생긴다.
+	 *    - 만약 querydsl를 다른 기술로 변경한다면 함께 변경해야한다.
+	 *    - DTO는 Service, Repository, Controller 전체에서 쓰일 수 있다.
+	 *      여러 Layer에 걸쳐 돌아다닌다. DTO가 querydsl에 의존적으로 설계되어 의존적이다. 아키텍쳐적으로 아쉽다.
+	 */
+	@Test
+	public void findDtoByQueryProjection() {
+		List<MemberDto> result = queryFactory
+				/**
+				 * 생성자 방식(런타임 시점에 오류 잡음)과 다르게 컴파일 오류를 잡아준다는 장점이 있다.
+				 */
+				.select(new QMemberDto(member.username, member.age))
+				.from(member)
+				.fetch();
+
+		for (MemberDto memberDto : result) {
+			System.out.println("memberDto = " + memberDto);
 		}
 	}
 }
