@@ -15,6 +15,7 @@ public class MemberController {
 
     private final MemberJpaRepository memberJpaRepository;
 
+    // 예시 - http://localhost:8080/v1/members?teamName=teamB&ageGoe=31&ageLoe=35&username=member31
     @GetMapping("/v1/members")
     public List<MemberTeamDto> searchMemberV1(MemberSearchCondition condition) {
         return memberJpaRepository.searchByWhereParameter(condition);
