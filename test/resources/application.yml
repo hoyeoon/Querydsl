@@ -1,6 +1,6 @@
 spring:
   profiles:
-    active: local # 로컬에서 돌린다는 의미로 local로 임의로 정함 (dev, real ..)
+    active: test
 
   datasource:
     url: jdbc:h2:tcp://localhost/~/querydsl
